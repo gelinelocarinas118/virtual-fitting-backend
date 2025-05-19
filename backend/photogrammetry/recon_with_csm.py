@@ -1,43 +1,58 @@
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
-import os, subprocess, threading, requests, json, traceback
+import os, subprocess, threading, requests, json, shutil
 from datetime import datetime
 
 from blender_control import adjust_model_in_blender
-from mp_pose_est_module import extract_measurements_from_images  # or your chosen pose module
-from cube_csm import upload_glb_to_cube                          # NEW ⭐
+from csm import CSMClient
+from pathlib import Path
+from shutil import move
+# choose one pose estimation method
+
+from mp_pose_est_module import extract_measurements_from_images # mediapipe
+# from op_pose_est_module import extract_measurements_from_images # openpose
+# from pn_pose_est_module import extract_measurements_from_images # posenet
+
+
 
 load_dotenv()
 app = Flask(__name__)
 
-MESHROOM_PATH = os.getenv("MESHROOM_PATH")
-UPLOAD_DIR    = os.path.abspath(os.getenv("UPLOAD_DIR",   "../storage/app/public/uploads"))
-OUTPUT_DIR    = os.path.abspath(os.getenv("OUTPUT_DIR",   "../storage/app/public/outputs"))
-CALLBACK_PORT = os.getenv("CALLBACK_PORT", "8000")
-MESH_PORT     = int(os.getenv("MESH_PORT", "3001"))
+API_KEY = os.getenv("CUBE_API_KEY")
+MESHROOM_PATH = os.getenv('MESHROOM_PATH')
+UPLOAD_DIR    = os.path.abspath(os.getenv('UPLOAD_DIR',   '../storage/app/public/uploads'))
+OUTPUT_DIR    = os.path.abspath(os.getenv('OUTPUT_DIR',   '../storage/app/public/outputs'))
+CALLBACK_PORT = os.getenv('CALLBACK_PORT', '8000')
+MESH_PORT     = int(os.getenv('MESH_PORT', '3001'))
 
 # ─────────────────── 1. ROUTES ─────────────────────────
 @app.post("/upload")
 def handle_upload_request():
+    """
+    Expected JSON body:
+        {
+          "timestamp": "YYYYmmdd_HHMMSS",
+          "height": 172      # in cm (integer or numeric string)
+        }
+    """
     try:
         data       = request.get_json(force=True)
         timestamp  = data.get('timestamp')
-        height_raw = data.get('height')
+        height_raw = data.get('height')    
 
         if not timestamp:
             return jsonify({'error': 'Missing timestamp'}), 400
         if height_raw is None:
             return jsonify({'error': 'Missing height'}), 400
-
         try:
             height_cm = int(height_raw)
             if not (50 <= height_cm <= 300):
                 raise ValueError
         except ValueError:
-            return jsonify({'error': 'Height must be 50-300 cm'}), 422
+            return jsonify({'error': 'Height must be an integer (50-300 cm)'}), 422
 
-        upload_path = os.path.join(UPLOAD_DIR, timestamp)
-        output_path = os.path.join(OUTPUT_DIR, timestamp)
+        upload_path  = os.path.join(UPLOAD_DIR,  timestamp)
+        output_path  = os.path.join(OUTPUT_DIR,  timestamp)
         if not os.path.isdir(upload_path):
             return jsonify({'error': f'Upload directory not found: {upload_path}'}), 404
         os.makedirs(output_path, exist_ok=True)
@@ -48,7 +63,7 @@ def handle_upload_request():
             daemon=True
         ).start()
 
-        return jsonify({'message': 'Reconstruction started', 'timestamp': timestamp}), 200
+        return jsonify({'message': 'Reconstruction started.', 'timestamp': timestamp}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -56,10 +71,10 @@ def handle_upload_request():
 # ─────────────────── 2. HELPERS ─────────────────────────
 def find_image(path, basename):
     for ext in ('.jpg', '.jpeg', '.png'):
-        p = os.path.join(path, f"{basename}{ext}")
-        if os.path.isfile(p):
-            return p
-    raise FileNotFoundError(f'{basename} image not found in {path}')
+        candidate = os.path.join(path, f"{basename}{ext}")
+        if os.path.isfile(candidate):
+            return candidate
+    raise FileNotFoundError(f'{basename} image (.jpg|.jpeg|.png) not found in {path}')
 
 # ─────────────────── 3. MAIN PIPELINE ───────────────────
 def full_pipeline(input_path, output_path, timestamp, height_cm):
@@ -67,9 +82,10 @@ def full_pipeline(input_path, output_path, timestamp, height_cm):
     status, message = 'success', ''
 
     try:
-        # 1) Pose-based measurements
+        #  Pose estimation & measurements
         front_img = find_image(input_path, 'front')
         side_img  = find_image(input_path, 'side')
+
         measurements = extract_measurements_from_images(front_img, side_img, height_cm)
         measurements['height_cm'] = height_cm
 
@@ -78,46 +94,46 @@ def full_pipeline(input_path, output_path, timestamp, height_cm):
             json.dump(measurements, f, indent=2)
         print(f"[INFO] Measurements saved → {measurement_file}")
 
-        # 2) Meshroom photogrammetry
-        subprocess.run(
-            [MESHROOM_PATH, "--input", input_path, "--output", output_path],
-            check=True
-        )
-        model_path = os.path.join(output_path, 'texturedMesh.obj')
-        if not os.path.isfile(model_path):
-            raise FileNotFoundError("Meshroom output (.obj) not found")
-        print(f"[DEBUG] Mesh found → {model_path}")
+  
+        # 2) Cube csm creating 3d model
 
-        # 3) Blender scaling → GLB
-        glb_out = os.path.join(output_path, f"{timestamp}_model.glb")
-        blend_template = os.path.abspath("photogrammetry/base.blend")
+        csm_client = CSMClient(api_key=API_KEY)
+        result     = csm_client.image_to_3d(front_img, mesh_format="obj")
+
+        output_path = Path(output_path)    
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        model_path = output_path / f"{timestamp}.obj"
+        move(result.mesh_path, model_path)
+        print(f"[INFO] CSM mesh saved → {model_path}")
+        # -----------------------------------------------------------------
+
+        # Call Blender, passing the measurement JSON + height
+        glb_out        = output_path / f"{timestamp}_model.glb"
+        blend_template = Path("photogrammetry/base.blend").resolve()
+
         adjust_model_in_blender(
-            model_path=model_path,
-            output_path=glb_out,
-            blend_template_path=blend_template,
+            model_path=str(model_path),
+            output_path=str(glb_out),
+            blend_template_path=str(blend_template),
             measurement_json_path=measurement_file,
             target_height_cm=height_cm
         )
         print(f"[INFO] GLB exported → {glb_out}")
 
-        # 4) Upload to Cube CSM ⭐
-        try:
-            asset_id, cdn_url = upload_glb_to_cube(glb_out, f"userModel_{timestamp}")
-            print(f"[CUBE] Uploaded assetId={asset_id}")
-        except Exception as e:
-            print(f"[CUBE ERROR] {e}")
-
-        message = 'Model reconstructed, scaled, exported, and uploaded to Cube CSM.'
+        message = 'Model reconstructed, scaled, and exported to GLB.'
 
     except subprocess.CalledProcessError as e:
-        status, message = 'error', f'Meshroom/Blender failed: {e}'
+        status  = 'error'
+        message = f'Meshroom/Blender failed: {e}'
     except Exception as e:
-        status = 'exception'
+        status  = 'exception'
+        import traceback
         tb = traceback.format_exc()
         message = f'Unexpected error: {e}\n{tb}'
-        print(f"[ERROR] full_pipeline:\n{tb}")
+        print(f"[ERROR] full_pipeline exception:\n{tb}")
 
-    # 5) Notify Laravel
+    # Callback Laravel
     try:
         res = requests.post(callback_url, json={
             'timestamp': timestamp,
@@ -125,6 +141,8 @@ def full_pipeline(input_path, output_path, timestamp, height_cm):
             'message':   message
         })
         print(f"[CALLBACK] {status} — Laravel responded {res.status_code}")
+        if status != 'success':
+            print(f"[CALLBACK MESSAGE] {message}")
     except Exception as e:
         print(f"[CALLBACK ERROR] {e}")
 

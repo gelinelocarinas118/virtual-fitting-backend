@@ -12,67 +12,72 @@ use App\Models\Reconstruction;
 class UploadController extends Controller
 {
 
-    public function storeMultiple(Request $request)
-    {
-        if (!$request->hasFile('images')) {
-            return response()->json(['error' => 'No images uploaded.'], 400);
-        }
-    
-        $timestamp = now()->format('Ymd_His');
-        $folder = "uploads/{$timestamp}";
-        $paths = [];
-    
-        foreach ($request->file('images') as $image) {
-            // Get original filename
-            $originalName = $image->getClientOriginalName();
-    
-            // Store using original name
-            $path = $image->storeAs($folder, $originalName, 'public');
-    
-            $paths[] = $path;
-        }
-    
-        // Save initial record with images saved
-        $model = Reconstruction::create([
+   public function storeImages(Request $request)
+{
+    /* ───────── 1. Validate input ───────── */
+    $validated = $request->validate([
+        'front'  => 'required|image|mimes:jpg,jpeg,png',
+        'side'   => 'required|image|mimes:jpg,jpeg,png',
+        'height' => 'required|integer|min:50|max:300',
+    ]);
+
+    /* ───────── 2. Prep directories ─────── */
+    $timestamp  = now()->format('Ymd_His');
+    $baseFolder = "public/uploads/$timestamp";
+    Storage::makeDirectory($baseFolder);
+    $diskPath   = storage_path("app/$baseFolder");
+
+    /* ───────── 3. Save images ──────────── */
+    $frontRel = $validated['front']->storeAs("uploads/$timestamp", 'front.' . $validated['front']->extension(), 'public');
+    $sideRel  = $validated['side']->storeAs("uploads/$timestamp", 'side.'  . $validated['side']->extension(),  'public');
+
+    /* ───────── 4. Create DB record ─────── */
+    $model = Reconstruction::create([
+        'timestamp'      => $timestamp,
+        'height_cm'      => $validated['height'],
+        'is_saved'       => true,
+        'is_processing'  => false,
+        'is_model_ready' => false,
+        'is_failed'      => false,
+        'message'        => 'Images uploaded (front & side).',
+    ]);
+
+    /* ───────── 5. Notify Flask ─────────── */
+    try {
+        $response = Http::post('http://localhost:3001/upload', [
             'timestamp' => $timestamp,
-            'is_saved' => true,
-            'is_processing' => false,
-            'is_model_ready' => false,
-            'is_failed' => false,
-            'message' => 'Images saved in Laravel.'
+            'height'    => $validated['height'],
         ]);
-    
-        // Notify Flask (running on port 3001)
-        try {
-            $response = Http::post('http://localhost:3001/upload', [
-                'timestamp' => $timestamp
+
+        if ($response->successful()) {
+            $model->update([
+                'is_processing' => true,
+                'message'       => 'Processing started by Flask.',
             ]);
-    
-            if ($response->successful()) {
-                $model->update([
-                    'is_processing' => true,
-                    'message' => 'Processing started by Flask.'
-                ]);
-    
-                return response()->json([
-                    'message' => 'Images uploaded and sent to Flask.',
-                    'timestamp' => $timestamp,
-                    'flask' => $response->json(),
-                ]);
-            } else {
-                return response()->json([
-                    'error' => 'Flask upload failed.',
-                    'flask' => $response->body(),
-                ], 500);
-            }
-        } catch (\Exception $e) {
+
             return response()->json([
-                'error' => 'Flask server not reachable',
-                'exception' => $e->getMessage()
-            ], 500);
+                'message'     => 'Images uploaded and sent to Flask.',
+                'timestamp'   => $timestamp,
+                'height'      => $validated['height'],
+                'front_image' => basename($frontRel),
+                'side_image'  => basename($sideRel),
+                'flask'       => $response->json(),
+            ]);
         }
+
+        return response()->json([
+            'error' => 'Flask processing failed.',
+            'flask' => $response->body(),
+        ], 500);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'error'     => 'Flask server not reachable.',
+            'exception' => $e->getMessage(),
+        ], 500);
     }
-    
+}
+
     
 public function storeZip(Request $request)
 {

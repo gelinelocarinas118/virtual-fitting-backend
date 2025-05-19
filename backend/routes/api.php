@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Route;
 Route::post('login', [ApiLoginController::class, 'login']);
 Route::post('register', [ApiRegisterController::class, 'register']);
 
-Route::post('upload',[UploadController::class, 'storeZip']);
+Route::post('upload',[UploadController::class, 'storeImages']);
 Route::post('photogrammetry/callback', [CallbackController::class, 'reconstructionDone']);
 
 //test
