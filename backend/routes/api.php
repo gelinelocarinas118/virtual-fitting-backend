@@ -3,7 +3,7 @@
 use App\Http\Controllers\Api\Auth\ApiLoginController;
 use App\Http\Controllers\Api\Auth\ApiRegisterController;
 use App\Http\Controllers\Api\File\UploadController;
-use App\Http\Controllers\Api\File\CallbackController;
+use App\Http\Controllers\Api\File\LaravelController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -22,10 +22,9 @@ Route::post('login', [ApiLoginController::class, 'login']);
 Route::post('register', [ApiRegisterController::class, 'register']);
 
 Route::post('upload',[UploadController::class, 'storeImages']);
-Route::post('photogrammetry/callback', [CallbackController::class, 'reconstructionDone']);
+// Route::post('photogrammetry/callback', [CallbackController::class, 'reconstructionDone']);
+Route::post('photogrammetry/callback', [LaravelController::class, 'reconstructionDone']);
 
-//test
-Route::post('/upload-zip', [UploadController::class, 'storeZip']);
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();

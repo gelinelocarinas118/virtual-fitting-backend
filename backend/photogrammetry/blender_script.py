@@ -1,9 +1,7 @@
 import bpy, sys, os, json
-from mathutils import Vector        # noqa: F401                (not used now)
+from mathutils import Vector
 
-# ------------------------------------------------------------
-# Parse CLI:  blender -b -P blender_script.py -- input.obj output.glb [--monochrome R G B]
-# ------------------------------------------------------------
+
 argv = sys.argv[sys.argv.index("--") + 1:]
 if len(argv) < 2:
     raise SystemExit("Usage: blender ... -- input.obj output.glb [--monochrome R G B]")
@@ -17,20 +15,13 @@ if "--monochrome" in rest:
     except ValueError:
         raise SystemExit("--monochrome needs three floats R G B (0-1)")
 
-# ------------------------------------------------------------
-# Fresh scene
-# ------------------------------------------------------------
+
 bpy.ops.wm.read_factory_settings(use_empty=True)
 
-# ------------------------------------------------------------
-# Import OBJ (no scaling!)
-# ------------------------------------------------------------
 bpy.ops.import_scene.obj(filepath=in_obj)
 obj = bpy.context.selected_objects[0]
 
-# ------------------------------------------------------------
-# Optional monochrome material
-# ------------------------------------------------------------
+
 if mono_rgb:
     mat_name = f"Mono_{'_'.join(f'{c:.2f}' for c in mono_rgb)}"
     mat = bpy.data.materials.get(mat_name) or bpy.data.materials.new(mat_name)
@@ -45,9 +36,7 @@ if mono_rgb:
             ob.data.materials.append(mat)
     print(f"[BLENDER] applied monochrome colour {mono_rgb}")
 
-# ------------------------------------------------------------
-# Export GLB
-# ------------------------------------------------------------
+
 bpy.ops.export_scene.gltf(filepath=out_glb, export_format='GLB')
 if not os.path.isfile(out_glb):
     raise FileNotFoundError(out_glb)

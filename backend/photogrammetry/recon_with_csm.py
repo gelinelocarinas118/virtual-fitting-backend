@@ -7,6 +7,7 @@ from blender_control import adjust_model_in_blender
 from csm import CSMClient
 from pathlib import Path
 from shutil import move
+
 # choose one pose estimation method
 
 from mp_pose_est_module import extract_measurements_from_images # mediapipe
@@ -38,7 +39,7 @@ def handle_upload_request():
     try:
         data       = request.get_json(force=True)
         timestamp  = data.get('timestamp')
-        height_raw = data.get('height')    
+        height_raw = data.get('height')
 
         if not timestamp:
             return jsonify({'error': 'Missing timestamp'}), 400
@@ -78,7 +79,7 @@ def find_image(path, basename):
 
 # ─────────────────── 3. MAIN PIPELINE ───────────────────
 def full_pipeline(input_path, output_path, timestamp, height_cm):
-    callback_url = f"http://localhost:{CALLBACK_PORT}/api/photogrammetry/callback"
+    callback_url = f"http://127.0.0.1:{CALLBACK_PORT}/api/photogrammetry/callback"
     status, message = 'success', ''
 
     try:
@@ -94,13 +95,13 @@ def full_pipeline(input_path, output_path, timestamp, height_cm):
             json.dump(measurements, f, indent=2)
         print(f"[INFO] Measurements saved → {measurement_file}")
 
-  
+
         # 2) Cube csm creating 3d model
 
         csm_client = CSMClient(api_key=API_KEY)
         result     = csm_client.image_to_3d(front_img, mesh_format="obj")
 
-        output_path = Path(output_path)    
+        output_path = Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
         model_path = output_path / f"{timestamp}.obj"
