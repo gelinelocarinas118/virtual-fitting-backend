@@ -21,9 +21,10 @@ app = Flask(__name__)
 
 API_KEY = os.getenv("CUBE_API_KEY")
 MESHROOM_PATH = os.getenv('MESHROOM_PATH')
-UPLOAD_DIR    = os.path.abspath(os.getenv('UPLOAD_DIR',   '../storage/app/public/uploads'))
-OUTPUT_DIR    = os.path.abspath(os.getenv('OUTPUT_DIR',   '../storage/app/public/outputs'))
+UPLOAD_DIR    = os.path.abspath(os.getenv('UPLOAD_DIR',   'storage/app/public/uploads'))
+OUTPUT_DIR    = os.path.abspath(os.getenv('OUTPUT_DIR',   'storage/app/public/outputs'))
 CALLBACK_PORT = os.getenv('CALLBACK_PORT', '8000')
+LAPTOP_SERVER_IP = os.getenv('LAPTOP_SERVER_IP', '192.168.1.1')
 MESH_PORT     = int(os.getenv('MESH_PORT', '3001'))
 
 # ─────────────────── 1. ROUTES ─────────────────────────
@@ -79,7 +80,7 @@ def find_image(path, basename):
 
 # ─────────────────── 3. MAIN PIPELINE ───────────────────
 def full_pipeline(input_path, output_path, timestamp, height_cm):
-    callback_url = f"http://127.0.0.1:{CALLBACK_PORT}/api/photogrammetry/callback"
+    callback_url = f"http://{LAPTOP_SERVER_IP}:{CALLBACK_PORT}/api/photogrammetry/callback"
     status, message = 'success', ''
 
     try:
