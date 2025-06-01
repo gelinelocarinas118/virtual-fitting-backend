@@ -63,6 +63,7 @@ class UploadController extends Controller
                     'front_image' => basename($frontRel),
                     'side_image'  => basename($sideRel),
                     'flask'       => $response->json(),
+                    'is_saved'    => $model->is_saved
                 ]);
             }
 
