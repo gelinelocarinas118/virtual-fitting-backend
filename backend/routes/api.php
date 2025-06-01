@@ -22,7 +22,6 @@ Route::post('login', [ApiLoginController::class, 'login']);
 Route::post('register', [ApiRegisterController::class, 'register']);
 
 Route::post('upload',[UploadController::class, 'storeImages']);
-// Route::post('photogrammetry/callback', [CallbackController::class, 'reconstructionDone']);
 Route::post('photogrammetry/callback', [LaravelController::class, 'reconstructionDone']);
 
 
