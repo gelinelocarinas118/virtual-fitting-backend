@@ -19,10 +19,11 @@ class UploadController extends Controller
         'front'  => 'required|image|mimes:jpg,jpeg,png',
         'side'   => 'required|image|mimes:jpg,jpeg,png',
         'height' => 'required|integer|min:50|max:300',
+        'timestamp' => 'required|string'
     ]);
 
     /* ───────── 2. Prep directories ─────── */
-    $timestamp  = now()->format('Ymd_His');
+    $timestamp  = $validated['timestamp'];
     $baseFolder = "public/uploads/$timestamp";
     Storage::makeDirectory($baseFolder);
     $diskPath   = storage_path("app/$baseFolder");
@@ -78,7 +79,7 @@ class UploadController extends Controller
     }
 }
 
-    
+
 public function storeZip(Request $request)
 {
     /* ───────── 1. Validate input ───────── */
@@ -89,8 +90,8 @@ public function storeZip(Request $request)
 
     /* ───────── 2. Prep directories ─────── */
     $timestamp      = now()->format('Ymd_His');
-    $baseFolder     = "public/uploads/$timestamp";            
-    $extractionPath = storage_path("app/$baseFolder");      
+    $baseFolder     = "public/uploads/$timestamp";
+    $extractionPath = storage_path("app/$baseFolder");
     Storage::makeDirectory($baseFolder);
 
     /* ───────── 3. Save uploaded ZIP ────── */
@@ -109,7 +110,7 @@ public function storeZip(Request $request)
         $stat = $zip->statIndex($i);
         if ($stat === false) continue;
         $name = $stat['name'];
-        if (str_ends_with($name, '/')) continue;  
+        if (str_ends_with($name, '/')) continue;
 
         $lower = strtolower(basename($name));
         if (preg_match('/^front\.(jpg|jpeg|png)$/', $lower)) {
